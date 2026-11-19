@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Magnetic Field Lines Lab</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:20px;background:#101827;color:#fff;font-family:Arial,sans-serif;display:grid;place-items:center}
+.app{width:min(750px,100%);padding:24px;background:#1b2940;border-radius:20px;box-shadow:0 15px 40px #0005}
+h1{text-align:center;color:#70d6ff;margin:0 0 8px}
+.subtitle{text-align:center;color:#b8c7dc;line-height:1.5}
+canvas{width:100%;height:auto;aspect-ratio:1.5;background:#0c1627;border:1px solid #34445e;border-radius:13px;display:block;margin:18px 0;touch-action:none}
+.controls{display:flex;flex-wrap:wrap;gap:9px;justify-content:center}
+button{border:0;border-radius:9px;padding:11px 15px;background:#344963;color:white;font-weight:bold;cursor:pointer}
+button:hover,button.active{background:#70d6ff;color:#102033}
+.info{background:#263751;border-radius:12px;padding:14px;margin-top:16px;color:#dceaff;text-align:center;font-size:14px;line-height:1.5}
+.legend{display:flex;justify-content:center;gap:20px;margin-top:15px;color:#b8c7dc;font-size:13px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+@media(max-width:450px){.app{padding:15px}button{padding:10px;font-size:12px}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>🧲 Magnetic Field Lines Lab</h1>
+<p class="subtitle">Place magnets on the canvas and explore how their magnetic fields interact. Drag magnets to move them!</p>
+
+<canvas id="canvas" width="750" height="500"></canvas>
+
+<div class="controls">
+<button id="add" class="active">＋ Add Magnet</button>
+<button id="flip">↻ Flip Polarity</button>
+<button id="remove">✕ Remove Last</button>
+<button id="clear">Clear All</button>
+</div>
+
+<div class="legend">
+<span><i class="dot" style="background:#ff647c"></i>North (N)</span>
+<span><i class="dot" style="background:#70b8ff"></i>South (S)</span>
+<span><i class="dot" style="background:#f6cf72"></i>Field lines</span>
+</div>
+
+<div class="info" id="info">Click anywhere on the canvas to place a bar magnet. Drag it to explore field interactions.</div>
+</div>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const info=document.getElementById("info");
+let magnets=[];
+let selected=null;
+let dragging=false;
+let mode="add";
+let lastTime=0;
+
+const W=750,H=500;
+const colors={N:"#ff647c",S:"#70b8ff"};
+
+function addMagnet(x=W/2,y=H/2){
+ magnets.push({x,y,angle:0});
+ info.textContent="Magnet added! Drag it to move it or select Flip Polarity to reverse its poles.";
+}
+
+function getPoles(m){
+ return [
+  {x:m.x-Math.cos(m.angle)*35,y:m.y-Math.sin(m.angle)*35,sign:-1},
+  {x:m.x+Math.cos(m.angle)*35,y:m.y+Math.sin(m.angle)*35,sign:1}
+ ];
+}
+
+// Magnetic field approximation from dipole poles
+function field(x,y){
+ let bx=0,by=0;
+ magnets.forEach(m=>{
+  getPoles(m).forEach(p=>{
+   let dx=x-p.x,dy=y-p.y;
+   let r2=dx*dx+dy*dy+100;
+   let strength=p.sign/(r2*Math.sqrt(r2));
+   bx+=dx*strength;
+   by+=dy*strength;
+  });
+ });
+ return {x:bx,y:by};
+}
+
+function traceLine(x,y,direction){
+ let points=[];
+ let px=x,py=y;
+ const step=3.5;
+ for(let i=0;i<650;i++){
+  const f=field(px,py);
+  const mag=Math.hypot(f.x,f.y);
+  if(mag<0.00000001)break;
+  px+=direction*f.x/mag*step;
+  py+=direction*f.y/mag*step;
+  if(px<3||px>W-3||py<3||py>H-3)break;
+  points.push({x:px,y:py});
+  if(i>15){
+   let near=false;
+   magnets.forEach(m=>{
+    getPoles(m).forEach(p=>{
+     if(Math.hypot(px-p.x,py-p.y)<13)near=true;
+    });
+   });
+   if(near)break;
+  }
+ }
+ return points;
+}
+
+function drawFieldLines(){
+ ctx.save();
+ ctx.strokeStyle="#f6cf72";
+ ctx.fillStyle="#f6cf72";
+ ctx.lineWidth=1.25;
+
+ magnets.forEach(m=>{
+  getPoles(m).forEach(p=>{
+   if(p.sign!==1)return;
+   for(let a=0;a<Math.PI*2;a+=Math.PI/9){
+    let x=p.x+Math.cos(a)*12;
+    let y=p.y+Math.sin(a)*12;
+    const points=traceLine(x,y,1);
+    if(points.length<8)return;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    points.forEach(pt=>ctx.lineTo(pt.x,pt.y));
+    ctx.stroke();
+
+    let index=Math.floor(points.length*.55);
+    if(index>3){
+     const p1=points[index-2],p2=points[index+2];
+     const angle=Math.atan2(p2.y-p1.y,p2.x-p1.x);
+     const tip=points[index];
+     ctx.beginPath();
+     ctx.moveTo(tip.x,tip.y);
+     ctx.lineTo(tip.x-9*Math.cos(angle-.5),tip.y-9*Math.sin(angle-.5));
+     ctx.lineTo(tip.x-9*Math.cos(angle+.5),tip.y-9*Math.sin(angle+.5));
+     ctx.closePath();ctx.fill();
+    }
+   }
+  });
+ });
+ ctx.restore();
+}
+
+function drawMagnets(){
+ magnets.forEach(m=>{
+  ctx.save();
+  ctx.translate(m.x,m.y);
+  ctx.rotate(m.angle);
+
+  ctx.fillStyle=colors.N;
+  ctx.beginPath();ctx.roundRect(-36,-13,36,26,4);ctx.fill();
+
+  ctx.fillStyle=colors.S;
+  ctx.beginPath();ctx.roundRect(0,-13,36,26,4);ctx.fill();
+
+  ctx.fillStyle="#fff";
+  ctx.font="bold 16px Arial";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillText("N",-18,0);
+  ctx.fillText("S",18,0);
+
+  ctx.restore();
+ });
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+
+ ctx.fillStyle="#ffffff08";
+ for(let x=15;x<W;x+=25){
+  for(let y=15;y<H;y+=25){
+   ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();
+  }
+ }
+
+ drawFieldLines();
+ drawMagnets();
+ requestAnimationFrame(draw);
+}
+
+function pointerPosition(e){
+ const rect=canvas.getBoundingClientRect();
+ return {
+  x:(e.clientX-rect.left)*W/rect.width,
+  y:(e.clientY-rect.top)*H/rect.height
+ };
+}
+
+canvas.addEventListener("pointerdown",e=>{
+ const p=pointerPosition(e);
+ selected=null;
+
+ for(let i=magnets.length-1;i>=0;i--){
+  const m=magnets[i];
+  const dx=p.x-m.x,dy=p.y-m.y;
+  const localX=dx*Math.cos(m.angle)+dy*Math.sin(m.angle);
+  const localY=-dx*Math.sin(m.angle)+dy*Math.cos(m.angle);
+  if(Math.abs(localX)<43&&Math.abs(localY)<22){
+   selected=m;dragging=true;
+   canvas.setPointerCapture(e.pointerId);
+   return;
+  }
+ }
+
+ if(mode==="add")addMagnet(p.x,p.y);
+});
+
+canvas.addEventListener("pointermove",e=>{
+ if(!dragging||!selected)return;
+ const p=pointerPosition(e);
+ selected.x=Math.max(40,Math.min(W-40,p.x));
+ selected.y=Math.max(25,Math.min(H-25,p.y));
+});
+
+canvas.addEventListener("pointerup",()=>{dragging=false;selected=null});
+canvas.addEventListener("pointercancel",()=>{dragging=false;selected=null});
+
+document.getElementById("add").onclick=()=>{
+ mode="add";
+ document.getElementById("add").classList.add("active");
+ info.textContent="Click anywhere on the canvas to add another magnet.";
+};
+
+document.getElementById("flip").onclick=()=>{
+ if(!magnets.length)return;
+ const m=selected||magnets[magnets.length-1];
+ m.angle+=Math.PI;
+ info.textContent="Magnet polarity reversed! Observe how the field pattern changes.";
+};
+
+document.getElementById("remove").onclick=()=>{
+ magnets.pop();
+ info.textContent="Last magnet removed.";
+};
+
+document.getElementById("clear").onclick=()=>{
+ magnets=[];
+ info.textContent="Canvas cleared. Add magnets to begin a new experiment.";
+};
+
+addMagnet(300,250);
+addMagnet(450,250);
+magnets[1].angle=Math.PI;
+draw();
+</script>
+</body>
+</html>
